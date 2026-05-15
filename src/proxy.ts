@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server'
 import createMiddleware from 'next-intl/middleware'
 import { NextResponse } from 'next/server'
+import { isAdminSessionUser } from '@/lib/admin'
 import { auth } from '@/lib/auth'
 import {
   buildPredictionResultsInternalRoutePath,
@@ -99,6 +100,9 @@ export default async function proxy(request: NextRequest) {
   }
 
   const session = await auth.api.getSession({
+    query: {
+      disableCookieCache: pathname.startsWith('/admin'),
+    },
     headers: request.headers,
   })
 
@@ -107,7 +111,7 @@ export default async function proxy(request: NextRequest) {
   }
 
   if (pathname.startsWith('/admin')) {
-    if (!session.user?.is_admin) {
+    if (!isAdminSessionUser(session.user)) {
       return NextResponse.redirect(new URL(withLocale('/', locale), request.url))
     }
   }

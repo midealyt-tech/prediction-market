@@ -121,6 +121,9 @@ interface NegRiskRedeemArgs {
 }
 
 export const MAX_ALLOWANCE = (1n << 256n) - 1n
+const USDC_BASE_UNITS = 1_000_000n
+// High enough for the app's max order input; avoids requiring the exact MAX value after allowance is spent.
+export const COLLATERAL_APPROVAL_REUSE_AMOUNT = 1_000_000_000n * USDC_BASE_UNITS
 
 const DEPOSIT_WALLET_BATCH_TYPES = {
   Call: [
@@ -286,6 +289,10 @@ export function buildCollateralApproveCall(spender: `0x${string}`): WalletCall {
     functionName: 'approve',
     args: [spender, MAX_ALLOWANCE],
   }))
+}
+
+export function hasSufficientCollateralAllowance(allowance: bigint): boolean {
+  return allowance >= COLLATERAL_APPROVAL_REUSE_AMOUNT
 }
 
 export function buildConditionalSetApprovalForAllCall(operator: `0x${string}`): WalletCall {

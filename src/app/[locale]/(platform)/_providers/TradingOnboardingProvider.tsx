@@ -50,7 +50,7 @@ import {
   buildCollateralApproveCall,
   buildConditionalSetApprovalForAllCall,
   buildSetReferralCalls,
-  MAX_ALLOWANCE,
+  hasSufficientCollateralAllowance,
 } from '@/lib/wallet/transactions'
 import { mergeSessionUserState, useUser } from '@/stores/useUser'
 
@@ -249,6 +249,22 @@ function completeDepositWalletDeployment({
   }
 }
 
+async function hasDepositWalletCollateralBalance(depositWalletAddress: `0x${string}`) {
+  const client = createPublicClient({
+    chain: defaultViemNetwork,
+    transport: http(defaultViemRpcUrl),
+  })
+
+  const balance = await client.readContract({
+    address: COLLATERAL_TOKEN_ADDRESS,
+    abi: erc20Abi,
+    functionName: 'balanceOf',
+    args: [depositWalletAddress],
+  }) as bigint
+
+  return balance > 0n
+}
+
 function openFundModalAfterTradingReady({
   hasDeployedDepositWallet,
   hasTokenApprovals,
@@ -374,6 +390,23 @@ function TradingOnboardingProviderContent({
     setActiveModal(modal)
   }, [isEventRoute, openAppKit, refreshSessionUserState, status, user])
 
+  const openFundModalIfBalanceEmpty = useCallback(async () => {
+    if (!user?.deposit_wallet_address) {
+      setFundModalOpen(true)
+      return
+    }
+
+    try {
+      const hasBalance = await hasDepositWalletCollateralBalance(user.deposit_wallet_address as `0x${string}`)
+      if (!hasBalance) {
+        setFundModalOpen(true)
+      }
+    }
+    catch {
+      setFundModalOpen(true)
+    }
+  }, [user?.deposit_wallet_address])
+
   const handleModalOpenChange = useCallback((modal: Exclude<OnboardingModal, null>, open: boolean) => {
     if (open) {
       setDismissedModal(null)
@@ -384,12 +417,12 @@ function TradingOnboardingProviderContent({
       setDismissedModal(modal)
       setActiveModal(null)
       setShouldShowFundAfterTradingReady(false)
-      setFundModalOpen(true)
+      void openFundModalIfBalanceEmpty()
       return
     }
     setDismissedModal(modal)
     setActiveModal(null)
-  }, [])
+  }, [openFundModalIfBalanceEmpty])
 
   const handleUsernameSubmit = useCallback(async (username: string, termsAccepted: boolean) => {
     if (isUsernameSubmitting) {
@@ -681,7 +714,7 @@ function TradingOnboardingProviderContent({
     ])
 
     const approvalCalls = collateralSpenders.flatMap((spender, index) =>
-      allowances[index] >= MAX_ALLOWANCE ? [] : [buildCollateralApproveCall(spender)],
+      hasSufficientCollateralAllowance(allowances[index]) ? [] : [buildCollateralApproveCall(spender)],
     )
     const operatorCalls = conditionalOperators.flatMap((operator, index) =>
       operatorApprovals[index] ? [] : [buildConditionalSetApprovalForAllCall(operator)],
@@ -801,7 +834,7 @@ function TradingOnboardingProviderContent({
       if (hasAutoRedeemOnChain) {
         setActiveModal(null)
         setShouldShowFundAfterTradingReady(false)
-        setFundModalOpen(true)
+        await openFundModalIfBalanceEmpty()
       }
       else {
         setActiveModal('auto-redeem')
@@ -823,6 +856,7 @@ function TradingOnboardingProviderContent({
   }, [
     affiliateMetadata,
     approvalsStep,
+    openFundModalIfBalanceEmpty,
     openNextRequirement,
     refreshSessionUserState,
     resolveMissingApprovalCalls,
@@ -888,7 +922,7 @@ function TradingOnboardingProviderContent({
       setDismissedModal(null)
       setActiveModal(null)
       setShouldShowFundAfterTradingReady(false)
-      setFundModalOpen(true)
+      await openFundModalIfBalanceEmpty()
     }
     catch (error) {
       if (error instanceof UserRejectedRequestError) {
@@ -904,6 +938,7 @@ function TradingOnboardingProviderContent({
     }
   }, [
     autoRedeemStep,
+    openFundModalIfBalanceEmpty,
     openNextRequirement,
     refreshSessionUserState,
     signTypedDataAsync,
