@@ -14,8 +14,7 @@ import { captureDepositWalletError, captureDepositWalletEvent } from '@/lib/depo
 import { db } from '@/lib/drizzle'
 import { buildClobHmacSignature } from '@/lib/hmac'
 import {
-  L2_AUTH_CONTEXT_COOKIE_NAME,
-  L2_AUTH_CONTEXT_COOKIE_NAME_SECURE,
+  getL2AuthContextCookieName,
   L2_AUTH_CONTEXT_TTL_SECONDS,
 } from '@/lib/l2-auth-context'
 import { TRADING_AUTH_REQUIRED_ERROR } from '@/lib/trading-auth/errors'
@@ -243,12 +242,12 @@ async function requestApiKey(baseUrl: string, headers: Record<string, string>) {
   }
 }
 
-async function persistL2AuthCookie(l2AuthContextId: string) {
+async function persistL2AuthCookie(userId: string, l2AuthContextId: string) {
   const cookieStore = await cookies()
   const isProduction = process.env.NODE_ENV === 'production'
 
   cookieStore.set({
-    name: isProduction ? L2_AUTH_CONTEXT_COOKIE_NAME_SECURE : L2_AUTH_CONTEXT_COOKIE_NAME,
+    name: getL2AuthContextCookieName({ secure: isProduction, userId }),
     value: l2AuthContextId,
     httpOnly: true,
     sameSite: 'lax',
@@ -676,7 +675,7 @@ export async function enableTradingAuthAction(
     if (!l2AuthContextId) {
       return { error: DEFAULT_ERROR_MESSAGE, data: null }
     }
-    await persistL2AuthCookie(l2AuthContextId)
+    await persistL2AuthCookie(user.id, l2AuthContextId)
 
     const updatedAt = new Date().toISOString()
     return {
